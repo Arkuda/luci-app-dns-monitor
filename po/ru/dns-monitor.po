@@ -1,0 +1,314 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-dns-monitor\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+msgid "DNS Monitor"
+msgstr "Монитор DNS"
+
+msgid "The service returned an invalid response."
+msgstr "Служба вернула некорректный ответ."
+
+msgid "DHCP lease (connection not verified)"
+msgstr "Аренда DHCP (подключение не подтверждено)"
+
+msgid "Neighbor entry (connection not verified)"
+msgstr "Запись в таблице соседей (подключение не подтверждено)"
+
+msgid "DHCP lease and neighbor entry (connection not verified)"
+msgstr "Аренда DHCP и запись в таблице соседей (подключение не подтверждено)"
+
+msgid "Connection unknown"
+msgstr "Состояние подключения неизвестно"
+
+msgid "IPv4 or IPv6 address"
+msgstr "Адрес IPv4 или IPv6"
+
+msgid "A DHCP lease or neighbor entry does not prove that a device is currently connected. Monitoring matches the chosen IP address only, not every address belonging to its MAC."
+msgstr "Аренда DHCP или запись в таблице соседей не подтверждает, что устройство сейчас подключено. Мониторинг учитывает только выбранный IP-адрес, а не все адреса, принадлежащие его MAC-адресу."
+
+msgid "Refresh devices"
+msgstr "Обновить устройства"
+
+msgid "Start monitoring"
+msgstr "Начать мониторинг"
+
+msgid "Stop monitoring"
+msgstr "Остановить мониторинг"
+
+msgid "Clear history"
+msgstr "Очистить историю"
+
+msgid "Search domain"
+msgstr "Поиск домена"
+
+msgid "Unique domains (case-insensitive)"
+msgstr "Уникальные домены (без учёта регистра)"
+
+msgid "Every request"
+msgstr "Каждый запрос"
+
+msgid "Time: newest first"
+msgstr "Время: сначала новые"
+
+msgid "Time: oldest first"
+msgstr "Время: сначала старые"
+
+msgid "Count: highest first"
+msgstr "Количество: по убыванию"
+
+msgid "Count: lowest first"
+msgstr "Количество: по возрастанию"
+
+msgid "Select"
+msgstr "Выбрать"
+
+msgid "Time / last request"
+msgstr "Время / последний запрос"
+
+msgid "Domain"
+msgstr "Домен"
+
+msgid "Client IP"
+msgstr "IP-адрес клиента"
+
+msgid "Record type"
+msgstr "Тип записи"
+
+msgid "Requests"
+msgstr "Запросы"
+
+msgid "Previous"
+msgstr "Назад"
+
+msgid "Next"
+msgstr "Вперёд"
+
+msgid "Select all filtered domains"
+msgstr "Выбрать все домены по фильтру"
+
+msgid "Clear selection"
+msgstr "Снять выделение"
+
+msgid "Selected filtered domains"
+msgstr "Выбранные домены по фильтру"
+
+msgid "All filtered domains"
+msgstr "Все домены по фильтру"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "Download"
+msgstr "Скачать"
+
+msgid "Add selected domains to ruantiblock"
+msgstr "Добавить выбранные домены в ruantiblock"
+
+msgid "Adding domains writes persistent files to router flash. Changes are not applied automatically. Use Update in the existing ruantiblock interface to apply them; Update may download lists and restart dnsmasq."
+msgstr "Добавление доменов записывает постоянные файлы во флеш-память маршрутизатора. Изменения не применяются автоматически. Для применения воспользуйтесь действием «Обновить» в существующем интерфейсе ruantiblock; обновление может загрузить списки и перезапустить dnsmasq."
+
+msgid "Observe dnsmasq DNS requests for one client IP address. Only requests reaching this router are visible; cached answers on the client and encrypted or external DNS are not captured."
+msgstr "Просмотр DNS-запросов dnsmasq для одного IP-адреса клиента. Видны только запросы, поступающие на этот маршрутизатор; ответы из кеша клиента, зашифрованный и внешний DNS не фиксируются."
+
+msgid "Monitoring is shared globally by all browser sessions. Closing this page does not stop it. Enabling and disabling monitoring restarts dnsmasq and can briefly interrupt DNS service. The backend automatically stops monitoring at the session expiry."
+msgstr "Мониторинг общий для всех сеансов браузера. Закрытие страницы не останавливает его. Включение и отключение мониторинга перезапускает dnsmasq и может ненадолго прервать работу DNS. Служба автоматически останавливает мониторинг по истечении времени сеанса."
+
+msgid "Read-only access: monitoring controls and ruantiblock additions are unavailable."
+msgstr "Доступ только для чтения: управление мониторингом и добавление в ruantiblock недоступны."
+
+msgid "Device"
+msgstr "Устройство"
+
+msgid "Manual client IP"
+msgstr "IP-адрес клиента вручную"
+
+msgid "Retained DNS history"
+msgstr "Сохранённая история DNS"
+
+msgid "Counts describe only retained requests matching the current filters, not lifetime totals. Domains are grouped by their exact case-insensitive name; parent domains are not combined."
+msgstr "Счётчики учитывают только сохранённые запросы, соответствующие текущим фильтрам, а не весь период наблюдения. Домены группируются по полному имени без учёта регистра; родительские домены не объединяются."
+
+msgid "Domain search"
+msgstr "Поиск домена"
+
+msgid "Client filter"
+msgstr "Фильтр клиентов"
+
+msgid "Record type filter"
+msgstr "Фильтр типов записей"
+
+msgid "Display"
+msgstr "Отображение"
+
+msgid "Sort"
+msgstr "Сортировка"
+
+msgid "Rows per page"
+msgstr "Строк на странице"
+
+msgid "Export scope"
+msgstr "Область экспорта"
+
+msgid "Format"
+msgstr "Формат"
+
+msgid "Copy and download include all matching table pages. TXT contains one spelling of each domain; CSV contains every matching retained request."
+msgstr "Копирование и скачивание включают все страницы таблицы, соответствующие фильтрам. TXT содержит по одному варианту написания каждого домена; CSV содержит каждый подходящий сохранённый запрос."
+
+msgid "ruantiblock user lists"
+msgstr "Пользовательские списки ruantiblock"
+
+msgid "User list"
+msgstr "Пользовательский список"
+
+msgid "Disabled lists are shown but cannot receive additions here. Select up to 500 valid domains per addition. Export remains available when ruantiblock is missing or unsupported."
+msgstr "Отключённые списки отображаются, но добавление в них здесь недоступно. За один раз можно добавить до 500 корректных доменов. Экспорт доступен даже при отсутствии или неподдерживаемой конфигурации ruantiblock."
+
+msgid "Cannot contact DNS Monitor: %s"
+msgstr "Не удалось связаться с монитором DNS: %s"
+
+msgid "Cannot refresh DNS history: %s"
+msgstr "Не удалось обновить историю DNS: %s"
+
+msgid "Enter an IP address manually"
+msgstr "Ввести IP-адрес вручную"
+
+msgid "Connection status: %s"
+msgstr "Состояние подключения: %s"
+
+msgid "unknown"
+msgstr "неизвестно"
+
+msgid "Unknown hostname"
+msgstr "Имя узла неизвестно"
+
+msgid "Unknown MAC"
+msgstr "MAC-адрес неизвестен"
+
+msgid "Device discovery failed. Enter the client IP manually or refresh devices."
+msgstr "Не удалось обнаружить устройства. Введите IP-адрес клиента вручную или обновите устройства."
+
+msgid "%s discovered addresses."
+msgstr "Обнаружено адресов: %s."
+
+msgid "Choose a user list"
+msgstr "Выберите пользовательский список"
+
+msgid "enabled"
+msgstr "включён"
+
+msgid "disabled"
+msgstr "отключён"
+
+msgid "Add selected filtered domains to an enabled ruantiblock user list after confirmation."
+msgstr "Добавьте выбранные домены по фильтру во включённый пользовательский список ruantiblock после подтверждения."
+
+msgid "ruantiblock integration is unavailable: %s"
+msgstr "Интеграция с ruantiblock недоступна: %s"
+
+msgid "not installed or no supported user lists"
+msgstr "не установлен или нет поддерживаемых пользовательских списков"
+
+msgid "Monitoring active for %s"
+msgstr "Мониторинг активен для %s"
+
+msgid "Monitoring stopped"
+msgstr "Мониторинг остановлен"
+
+msgid "Captured this session: %s. Retained on router: %s / %s. Automatic stop: %s."
+msgstr "Зафиксировано в этом сеансе: %s. Сохранено на маршрутизаторе: %s / %s. Автоматическая остановка: %s."
+
+msgid "All clients"
+msgstr "Все клиенты"
+
+msgid "All record types"
+msgstr "Все типы записей"
+
+msgid "Select domain %s"
+msgstr "Выбрать домен %s"
+
+msgid "No matching retained requests."
+msgstr "Нет сохранённых запросов, соответствующих фильтрам."
+
+msgid "%s matching requests; %s unique domains; %s requests loaded in this browser."
+msgstr "Запросов по фильтру: %s; уникальных доменов: %s; загружено запросов в этом браузере: %s."
+
+msgid "Catching up with retained history (at most 2,000 records per poll)."
+msgstr "Загрузка сохранённой истории (не более 2000 записей за один опрос)."
+
+msgid "%s selected filtered domains (%s selected in total)."
+msgstr "Выбрано доменов по фильтру: %s (всего выбрано: %s)."
+
+msgid "Page %s of %s"
+msgstr "Страница %s из %s"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Enter a valid IPv4 or IPv6 address without a prefix or zone identifier."
+msgstr "Введите корректный адрес IPv4 или IPv6 без префикса сети или идентификатора зоны."
+
+msgid "Start monitoring?"
+msgstr "Начать мониторинг?"
+
+msgid "Stop monitoring?"
+msgstr "Остановить мониторинг?"
+
+msgid "This operation restarts dnsmasq and can briefly interrupt DNS resolution for all clients. It changes shared monitoring state for every browser session."
+msgstr "Это действие перезапускает dnsmasq и может ненадолго прервать разрешение DNS для всех клиентов. Оно изменяет общее состояние мониторинга для всех сеансов браузера."
+
+msgid "Capture DNS requests from %s? Starting a new session clears retained history."
+msgstr "Записывать DNS-запросы от %s? Начало нового сеанса очищает сохранённую историю."
+
+msgid "Disable query logging and restore the previous dnsmasq logging settings? Retained history remains available."
+msgstr "Отключить журналирование запросов и восстановить прежние настройки журнала dnsmasq? Сохранённая история останется доступной."
+
+msgid "Clear retained history?"
+msgstr "Очистить сохранённую историю?"
+
+msgid "This removes the shared retained history for all browser sessions. Active monitoring continues and no dnsmasq restart is needed."
+msgstr "Это удалит общую сохранённую историю для всех сеансов браузера. Активный мониторинг продолжится, перезапуск dnsmasq не требуется."
+
+msgid "Operation failed: %s"
+msgstr "Не удалось выполнить действие: %s"
+
+msgid "Filtered export copied to clipboard."
+msgstr "Экспорт по фильтру скопирован в буфер обмена."
+
+msgid "Copy export"
+msgstr "Копировать экспорт"
+
+msgid "Clipboard access is unavailable. Select and copy the text below, or use Download."
+msgstr "Доступ к буферу обмена недоступен. Выделите и скопируйте текст ниже или нажмите «Скачать»."
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Persist domains to ruantiblock?"
+msgstr "Сохранить домены в ruantiblock?"
+
+msgid "Add %s selected filtered domains to %s?"
+msgstr "Добавить выбранные домены по фильтру (%s) в %s?"
+
+msgid "This writes a persistent user list on router flash. Existing entries are preserved. Nothing is applied automatically; use Update in ruantiblock when ready. Update can download lists and restart dnsmasq."
+msgstr "Это запишет постоянный пользовательский список во флеш-память маршрутизатора. Существующие записи сохранятся. Изменения не применяются автоматически; когда будете готовы, воспользуйтесь действием «Обновить» в ruantiblock. Обновление может загрузить списки и перезапустить dnsmasq."
+
+msgid "Add domains"
+msgstr "Добавить домены"
+
+msgid "The selected list is no longer enabled or available."
+msgstr "Выбранный список больше не включён или недоступен."
+
+msgid "%s domains added; %s already present. Changes are pending: use Update in ruantiblock to apply them."
+msgstr "Добавлено доменов: %s; уже присутствует: %s. Изменения ожидают применения: воспользуйтесь действием «Обновить» в ruantiblock."
+
+msgid "Open ruantiblock to apply changes"
+msgstr "Открыть ruantiblock для применения изменений"
+
+msgid "%s domains added; %s already present. No new domains were written."
+msgstr "Добавлено доменов: %s; уже присутствует: %s. Новые домены не записаны."

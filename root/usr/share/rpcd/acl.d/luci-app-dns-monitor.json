@@ -1,0 +1,17 @@
+{
+  "luci-app-dns-monitor": {
+    "description": "Read DNS monitoring history and client information",
+    "read": {
+      "ubus": {
+        "dns-monitor": ["status", "get_clients", "get_queries", "export"],
+        "dns-monitor.ruantiblock": ["lists"]
+      }
+    },
+    "write": {
+      "ubus": {
+        "dns-monitor": ["start", "stop", "clear"],
+        "dns-monitor.ruantiblock": ["add"]
+      }
+    }
+  }
+}

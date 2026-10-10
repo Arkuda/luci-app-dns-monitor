@@ -1,0 +1,163 @@
+#!/bin/sh
+# SPDX-License-Identifier: ISC
+# Only logging options are changed. The journal contains configuration, never queries.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+RAM=/tmp/dns-monitor
+JOURNAL=/etc/dns-monitor-recovery
+CONFIG=/etc/config/dhcp
+WORK=
+NEW_CONF=
+DIAGNOSTICS_READY=0
+fail() {
+    echo "dns-monitor: $*" >&2
+    if [ "$DIAGNOSTICS_READY" = 1 ]; then
+        diagnostic=$(mktemp "$RAM/error.XXXXXX") || exit 1
+        printf '%s' "$*" >"$diagnostic"
+        mv -f "$diagnostic" "$RAM/lifecycle.error"
+    fi
+    exit 1
+}
+cleanup() {
+    [ -z "$WORK" ] || rm -rf "$WORK"
+    [ -z "$NEW_CONF" ] || rm -f "$NEW_CONF"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+[ "$(id -u)" = 0 ] || fail 'Administrator privileges required'
+case "${1:-}" in start|stop|recover) ACTION=$1;; *) fail 'Unsupported lifecycle operation';; esac
+[ ! -L "$RAM" ] || fail 'Unsafe RAM directory'
+mkdir -p "$RAM"
+[ "$(stat -c '%u' "$RAM")" = 0 ] || fail 'RAM directory is not root-owned'
+MODE=$(stat -c '%a' "$RAM")
+[ $((0$MODE & 0022)) = 0 ] || fail 'RAM directory is writable by non-administrators'
+chmod 0711 "$RAM"
+DIAGNOSTICS_READY=1
+[ ! -L "$RAM/lifecycle.lock" ] || fail 'Unsafe lock file'
+exec 9>"$RAM/lifecycle.lock"
+flock -n 9 || fail 'Another lifecycle operation is in progress; retry'
+[ ! -L "$CONFIG" ] && [ -f "$CONFIG" ] || fail 'Unsafe or missing DHCP configuration'
+[ "$ACTION" = start ] || [ -e "$JOURNAL" ] || exit 0
+# Never apply another LuCI session's uncommitted DHCP changes.
+[ -z "$(uci -q changes dhcp)" ] || fail 'Apply or revert pending DHCP changes before changing monitoring'
+WORK=$(mktemp -d "$RAM/lifecycle.XXXXXX")
+mkdir "$WORK/config" "$WORK/delta"
+cp -p "$CONFIG" "$WORK/before"
+cp -p "$CONFIG" "$WORK/config/dhcp"
+u() { uci -q -c "$WORK/config" -t "$WORK/delta" "$@"; }
+valid_section() { case "$1" in ''|*[!a-zA-Z0-9_]*) return 1;; esac; }
+restart_instance() {
+    /etc/init.d/dnsmasq restart "$SECTION" || return 1
+    # procd startup is asynchronous; check the actual configured daemon PID.
+    n=0
+    while [ "$n" -lt 10 ]; do
+        if [ -s "/var/run/dnsmasq/dnsmasq.$SECTION.pid" ]; then
+            PID=$(cat "/var/run/dnsmasq/dnsmasq.$SECTION.pid")
+            case "$PID" in ''|*[!0-9]*) ;; *) kill -0 "$PID" 2>/dev/null && return 0;; esac
+        fi
+        n=$((n + 1))
+        sleep 1
+    done
+    return 1
+}
+install_config() {
+    [ -z "$(uci -q changes dhcp)" ] || fail 'Concurrent DHCP changes detected; configuration not overwritten'
+    cmp -s "$CONFIG" "$WORK/before" || fail 'DHCP configuration changed concurrently; retry the operation'
+    u commit dhcp || fail 'Cannot prepare DHCP logging configuration'
+    # Same-filesystem temporary file, then atomic replacement. Preserve config mode/owner.
+    NEW_CONF=$(mktemp /etc/config/.dns-monitor-dhcp.XXXXXX) || fail 'Cannot stage DHCP configuration'
+    cp -p "$WORK/config/dhcp" "$NEW_CONF" || fail 'Cannot stage DHCP configuration'
+    cmp -s "$CONFIG" "$WORK/before" || fail 'DHCP configuration changed concurrently; retry the operation'
+    mv -f "$NEW_CONF" "$CONFIG" || fail 'Cannot install DHCP configuration'
+    NEW_CONF=
+    sync
+}
+restore() {
+    [ -d "$JOURNAL" ] || return 0
+    [ ! -L "$JOURNAL" ] || fail 'Unsafe recovery journal'
+    [ -f "$JOURNAL/ready" ] || { rm -rf "$JOURNAL"; return 0; }
+    SECTION=$(cat "$JOURNAL/section")
+    valid_section "$SECTION" || fail 'Invalid section in recovery journal'
+    [ "$(u get "dhcp.$SECTION")" = dnsmasq ] || fail 'Original dnsmasq section no longer exists; restore the logging options manually'
+    # Preserve other settings and administrator logging changes made during capture.
+    FACILITY=$(u get "dhcp.$SECTION.logfacility" || true)
+    ORIGINAL_FACILITY=
+    [ ! -f "$JOURNAL/logfacility.present" ] || ORIGINAL_FACILITY=$(cat "$JOURNAL/logfacility")
+    if [ "$FACILITY" != "$RAM/queries.log" ] && [ "$FACILITY" != "$ORIGINAL_FACILITY" ] && [ ! -f "$JOURNAL/restoring" ]; then
+        fail 'Logging destination changed externally; inspect /etc/dns-monitor-recovery before restoring'
+    fi
+    for OPT in logqueries logfacility; do
+        if [ -f "$JOURNAL/$OPT.present" ]; then
+            VALUE=$(cat "$JOURNAL/$OPT")
+            u set "dhcp.$SECTION.$OPT=$VALUE" || fail 'Cannot restore logging option'
+        else
+            u delete "dhcp.$SECTION.$OPT" 2>/dev/null || true
+        fi
+    done
+    touch "$JOURNAL/restoring"
+    install_config
+    if [ "$ACTION" = recover ] && ! pidof dnsmasq >/dev/null 2>&1; then
+        : # Early boot: dnsmasq will start later with restored settings.
+    else
+        restart_instance || fail 'Logging settings restored, but dnsmasq did not restart; journal retained for retry'
+    fi
+    rm -rf "$JOURNAL"
+    rm -f "$RAM/queries.log"
+}
+if [ "$ACTION" != start ]; then
+    restore
+    exit 0
+fi
+[ ! -e "$JOURNAL" ] || fail 'A logging recovery journal exists; stop monitoring or run lifecycle recover first'
+SECTION=$(uci -q get dns-monitor.config.dnsmasq_instance || true)
+if [ -z "$SECTION" ]; then
+    SECTIONS=$(u -X show dhcp | grep '=dnsmasq$' | cut -d. -f2 | cut -d= -f1)
+    set -- $SECTIONS
+    [ "$#" = 1 ] || fail 'Multiple dnsmasq instances: configure dns-monitor.config.dnsmasq_instance explicitly'
+    SECTION=$1
+fi
+valid_section "$SECTION" || fail 'Invalid dnsmasq instance name'
+[ "$(u get "dhcp.$SECTION")" = dnsmasq ] || fail 'Configured dnsmasq instance does not exist'
+[ "$(u get "dhcp.$SECTION.disabled" || true)" != 1 ] || fail 'Configured dnsmasq instance is disabled'
+ORIGINAL=$(u get "dhcp.$SECTION.logqueries" || true)
+case "$ORIGINAL" in ''|0|off|false|no|disabled) ;; *) fail 'Disable existing DNS query logging first; monitoring will not restore query logging into the system log';; esac
+FACILITY=$(u get "dhcp.$SECTION.logfacility" || true)
+[ "$FACILITY" != "$RAM/queries.log" ] || fail 'Dedicated log destination is already configured externally'
+[ ! -L "$RAM/queries.log" ] || fail 'Unsafe log file'
+: >"$RAM/queries.log"
+chmod 0600 "$RAM/queries.log"
+# Verify dnsmasq supports the options before making any committed change.
+/usr/sbin/dnsmasq --test --conf-file=/dev/null --log-queries=extra --log-facility="$RAM/queries.log" >/dev/null 2>&1 || fail 'dnsmasq does not support required dedicated extra query logging'
+mkdir -m 0700 "$JOURNAL"
+printf '%s\n' "$SECTION" >"$JOURNAL/section"
+for OPT in logqueries logfacility; do
+    if VALUE=$(u get "dhcp.$SECTION.$OPT"); then
+        printf '%s' "$VALUE" >"$JOURNAL/$OPT"
+        touch "$JOURNAL/$OPT.present"
+    fi
+done
+u set "dhcp.$SECTION.logqueries=1"
+u set "dhcp.$SECTION.logfacility=$RAM/queries.log"
+# ready is durable before the DNS configuration can point at the RAM log.
+touch "$JOURNAL/ready"
+sync
+install_config
+if ! restart_instance; then
+    # Rebase on the configuration just installed, retaining unrelated settings.
+    cp -p "$CONFIG" "$WORK/before"
+    cp -p "$CONFIG" "$WORK/config/dhcp"
+    ACTION=stop
+    restore || true
+    fail 'Could not start monitored dnsmasq; original logging restoration attempted; inspect DNS service status'
+fi
+GENERATED="/var/etc/dnsmasq.conf.$SECTION"
+if ! grep -Fqx 'log-queries=extra' "$GENERATED" || ! grep -Fqx "log-facility=$RAM/queries.log" "$GENERATED"; then
+    cp -p "$CONFIG" "$WORK/before"
+    cp -p "$CONFIG" "$WORK/config/dhcp"
+    ACTION=stop
+    restore || true
+    fail 'Generated dnsmasq configuration did not contain dedicated extra logging; restoration attempted'
+fi
+exit 0

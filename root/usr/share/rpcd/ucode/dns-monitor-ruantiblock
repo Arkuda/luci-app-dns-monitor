@@ -1,0 +1,326 @@
+'use strict';
+
+import * as fs from 'fs';
+import { cursor } from 'uci';
+
+// Verified against ruantiblock 2.1.12-r1, commit
+// 52cc2e314d8f546878269e3c5d197946d9f3d28d: config_script_user_instances
+// maps named user_instance sections to USER_LISTS_DIR/<section>.
+const ROOT_DIR = '/etc/ruantiblock';
+const LIST_DIR = ROOT_DIR + '/user_lists';
+const CONFIG_FILE = ROOT_DIR + '/ruantiblock.conf';
+const UCI_DIR = '/etc/config';
+const BINARY = '/usr/bin/ruantiblock';
+const TRUSTED_UID = 0;
+const MAX_BYTES = 1048576;
+const APPLY_MESSAGE = 'Saved to flash; not applied. Use Update in the existing ruantiblock UI, or run /usr/bin/ruantiblock update while ruantiblock is running. Update may download blacklists and restart DNS. No routing or nftables changes were made by DNS Monitor.';
+
+function io_error(action) {
+	die(action + ': ' + (fs.error() || 'filesystem operation failed'));
+}
+
+function same_inode(a, b) {
+	return a && b && a.inode == b.inode && a.dev.major == b.dev.major && a.dev.minor == b.dev.minor;
+}
+
+function same_stat(a, b) {
+	return same_inode(a, b) && a.mode == b.mode && a.uid == b.uid && a.gid == b.gid &&
+		a.nlink == b.nlink && a.size == b.size && a.mtime == b.mtime && a.ctime == b.ctime;
+}
+
+function trusted(path, kind) {
+	let st = fs.lstat(path);
+	if (!st)
+		io_error('Cannot inspect ' + path);
+	if (st.type != kind || st.uid != TRUSTED_UID || (st.mode & 0o022) ||
+		(kind == 'file' && st.nlink != 1))
+		die('Unsafe filesystem object: ' + path + ' (requires a root-owned ' + kind + ', no symlinks, hardlinks or group/world write permission)');
+	return st;
+}
+
+function read_snapshot(path, maximum) {
+	let before = trusted(path, 'file');
+	if (before.size > maximum)
+		die('File exceeds size limit: ' + path);
+	let fd = fs.open(path, 're');
+	if (!fd)
+		io_error('Cannot open ' + path);
+	let descriptor = fs.stat('/proc/self/fd/' + fd.fileno());
+	if (!same_stat(before, descriptor)) {
+		fd.close();
+		die('File changed while opening: ' + path);
+	}
+	fs.error();
+	let data = fd.read(maximum + 1);
+	let read_error = fs.error();
+	let closed = fd.close();
+	let close_error = fs.error();
+	if (data == null || read_error || !closed)
+		die('Cannot read ' + path + ': ' + (read_error || close_error || 'I/O error'));
+	if (length(data) != before.size || !same_stat(before, fs.lstat(path)))
+		die('File changed while reading: ' + path);
+	return { data, st: before };
+}
+
+// Never source this shell file. Accept only literal assignments and comments;
+// arbitrary shell logic cannot safely establish the actual directory in use.
+function check_config(data) {
+	for (let line in split(data, '\n')) {
+		line = trim(line);
+		if (!length(line) || substr(line, 0, 1) == '#')
+			continue;
+		let assignment = match(line, /^(export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+		if (!assignment)
+			die('Unsupported shell logic in ruantiblock.conf; use export instead of list integration');
+		let key = assignment[2];
+		let value = assignment[3];
+		let double_quoted = substr(value, 0, 1) == '"';
+		let literal = match(value, /^"([^"`\\]*)"[ \t]*(#.*)?$/) ||
+			match(value, /^'([^']*)'[ \t]*(#.*)?$/) ||
+			match(value, /^([A-Za-z0-9_./:#-]*)[ \t]*(#.*)?$/);
+		if (!literal)
+			die('Unsupported shell value in ruantiblock.conf; use export instead of list integration');
+		value = literal[1];
+		if (key == 'USER_LISTS_DIR') {
+			if (value != LIST_DIR && !(double_quoted && value == '${CONFIG_DIR}/user_lists'))
+				die('Custom USER_LISTS_DIR is unsupported; use export instead of list integration');
+		}
+		else if (key == 'CONFIG_DIR') {
+			if (value != ROOT_DIR)
+				die('Custom CONFIG_DIR is unsupported; use export instead of list integration');
+		}
+		else if (key == 'NAME') {
+			if (value != 'ruantiblock')
+				die('Custom NAME is unsupported; use export instead of list integration');
+		}
+		else if (index(value, '$') >= 0 || index(value, '`') >= 0)
+			die('Dynamic shell configuration is unsupported; use export instead of list integration');
+	}
+}
+
+function environment() {
+	for (let dir in ['/etc', ROOT_DIR, LIST_DIR, UCI_DIR])
+		trusted(dir, 'directory');
+	let executable = trusted(BINARY, 'file');
+	if (!(executable.mode & 0o111))
+		die('ruantiblock executable is unavailable');
+	let config = read_snapshot(CONFIG_FILE, MAX_BYTES);
+	check_config(config.data);
+	let uci_file = read_snapshot(UCI_DIR + '/ruantiblock', MAX_BYTES);
+	// Use committed configuration, not a browser session's staged UCI delta.
+	let uci = cursor(UCI_DIR, '/var/empty', '');
+	if (!uci || !uci.load('ruantiblock'))
+		die('Cannot load committed ruantiblock UCI configuration');
+	let lists = [];
+	for (let n = 1; n <= 5; n++) {
+		let id = 'list' + n;
+		let section = uci.get_all('ruantiblock', id);
+		if (!section || section['.type'] != 'user_instance' || section['.anonymous'])
+			continue;
+		let mode = section.u_proxy_mode == '2' ? 'vpn' :
+			section.u_proxy_mode == '1' ? 'tor' : section.u_proxy_mode == '3' ? 'proxy' : 'unknown';
+		let st = fs.lstat(LIST_DIR + '/' + id);
+		if (!st)
+			fs.error();
+		let safe = st && st.type == 'file' && st.uid == TRUSTED_UID &&
+			!(st.mode & 0o022) && st.nlink == 1 && st.size <= MAX_BYTES;
+		push(lists, {
+			id, name: id, enabled: section.u_enabled == '1' && mode == 'vpn' && !!safe,
+			interface: type(section.u_if_vpn) == 'string' ? section.u_if_vpn : '', mode
+		});
+	}
+	if (!same_stat(uci_file.st, fs.lstat(UCI_DIR + '/ruantiblock')))
+		die('ruantiblock UCI configuration changed during discovery; retry');
+	return { lists, config, uci_file };
+}
+
+function domain_name(value) {
+	if (type(value) != 'string')
+		die('Each domain must be a string');
+	let name = lc(value);
+	if (match(name, /[^a-z0-9.-]/))
+		die('Only ASCII DNS names or punycode are accepted; no whitespace, URLs or IP literals');
+	if (substr(name, -1) == '.')
+		name = substr(name, 0, length(name) - 1);
+	if (!length(name) || length(name) > 253)
+		die('Invalid domain length');
+	let labels = split(name, '.');
+	if (length(labels) < 2)
+		die('A fully qualified domain name is required');
+	for (let label in labels) {
+		if (length(label) > 63 || !match(label, /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/))
+			die('Invalid DNS label; use LDH ASCII or punycode, not URLs, wildcards, underscores or IP addresses');
+	}
+	// Matches the pinned upstream user-entry parser's supported final label.
+	if (!match(labels[-1], /^([a-z]{2,}|xn--[a-z0-9]+)$/))
+		die('Invalid final DNS label; IP addresses are not domains');
+	return name;
+}
+
+function existing_domains(data) {
+	let seen = {};
+	for (let line in split(data, '\n')) {
+		let token = match(line, /^[ \t]*([^ \t\r#]+)/)?.[1];
+		if (token)
+			seen[lc(replace(token, /\.$/, ''))] = true;
+	}
+	return seen;
+}
+
+function add_locked(args, state) {
+	if (type(args.list) != 'string' || !match(args.list, /^list[1-5]$/))
+		die('Only fixed list1 through list5 IDs are accepted');
+	if (type(args.domains) != 'array' || !length(args.domains) || length(args.domains) > 500)
+		die('Provide between 1 and 500 domains');
+	let domains = map(args.domains, domain_name);
+	let env = environment();
+	let selected = filter(env.lists, l => l.id == args.list)[0];
+	if (!selected?.enabled)
+		die('Target must be an enabled VPN user_instance with a safe existing list file');
+
+	// Pin the directory inode. All mutation paths below are relative to its FD.
+	let directory_stat = trusted(LIST_DIR, 'directory');
+	state.directory = fs.opendir(LIST_DIR);
+	if (!state.directory)
+		io_error('Cannot open user-list directory');
+	let base = '/proc/self/fd/' + state.directory.fileno();
+	if (!same_inode(directory_stat, fs.stat(base)))
+		die('User-list directory changed while opening; retry');
+	let lock_path = base + '/.dns-monitor.lock';
+	let lock_stat = fs.lstat(lock_path);
+	if (!lock_stat) {
+		fs.error();
+		state.lock = fs.open(lock_path, 'wxe', 0o600);
+		if (!state.lock) {
+			fs.error();
+			// Another writer may have created the persistent lock first.
+			lock_stat = trusted(lock_path, 'file');
+			state.lock = fs.open(lock_path, 'r+e');
+		}
+	}
+	else {
+		trusted(lock_path, 'file');
+		state.lock = fs.open(lock_path, 'r+e');
+	}
+	if (!state.lock)
+		io_error('Cannot open list writer lock');
+	lock_stat = trusted(lock_path, 'file');
+	if (!same_inode(lock_stat, fs.stat('/proc/self/fd/' + state.lock.fileno())))
+		die('List writer lock was replaced; retry');
+	if (!state.lock.lock('xn'))
+		io_error('Another list writer is busy; retry');
+	if (!same_inode(lock_stat, fs.lstat(lock_path)))
+		die('List writer lock changed; retry');
+
+	let target = base + '/' + args.list;
+	let original = read_snapshot(target, MAX_BYTES);
+	let seen = existing_domains(original.data);
+	let additions = [];
+	let duplicates = 0;
+	for (let domain in domains) {
+		if (seen[domain])
+			duplicates++;
+		else {
+			seen[domain] = true;
+			push(additions, domain);
+		}
+	}
+	if (!length(additions))
+		return { added: 0, duplicates, pending: false, message: 'All domains already exist; the list was not modified.' };
+	let data = original.data;
+	if (length(data) && substr(data, -1) != '\n')
+		data += '\n';
+	data += join('\n', additions) + '\n';
+	if (length(data) > MAX_BYTES)
+		die('Resulting list exceeds the 1 MiB size limit');
+
+	// 24.10 fs.mkstemp() immediately unlinks its file and has no mkdtemp().
+	// Create a named, same-directory file with O_EXCL instead. PID + bounded
+	// collision suffix avoids overwriting even stale files left by a crash.
+	let pid = fs.readlink('/proc/self');
+	if (!pid || !match(pid, /^[0-9]+$/))
+		io_error('Cannot identify list writer process');
+	for (let attempt = 0; attempt < 16; attempt++) {
+		let candidate = base + '/.dns-monitor-' + pid + '-' + args.list + '-' + attempt + '.tmp';
+		state.temporary = fs.open(candidate, 'wxe', 0o600);
+		if (state.temporary) {
+			state.temporary_path = candidate;
+			break;
+		}
+		let creation_error = fs.error();
+		if (!fs.lstat(candidate))
+			die('Cannot create atomic replacement file: ' + (creation_error || 'I/O error'));
+	}
+	if (!state.temporary)
+		die('Too many stale atomic replacement files; inspect reserved .dns-monitor-*.tmp files');
+	if (state.temporary.write(data) != length(data))
+		io_error('Cannot write replacement list');
+	// close() checks the buffered write result. OpenWrt 24.10 fs has no fsync;
+	// do not pretend to provide power-loss durability beyond filesystem rename.
+	let close_ok = state.temporary.close();
+	state.temporary = null;
+	if (!close_ok)
+		io_error('Cannot close replacement list');
+	if (!fs.chown(state.temporary_path, original.st.uid, original.st.gid) ||
+		!fs.chmod(state.temporary_path, original.st.mode))
+		io_error('Cannot preserve list ownership and permissions');
+
+	let current_env = environment();
+	if (env.config.data != current_env.config.data || !same_stat(env.config.st, current_env.config.st) ||
+		env.uci_file.data != current_env.uci_file.data || !same_stat(env.uci_file.st, current_env.uci_file.st))
+		die('ruantiblock configuration changed; no entries saved, retry');
+	if (!same_inode(directory_stat, trusted(LIST_DIR, 'directory')) ||
+		!same_inode(lock_stat, fs.lstat(lock_path)))
+		die('User-list directory or writer lock changed; no entries saved, retry');
+	// Advisory locks do not cover ruantiblock's editor. Compare both complete
+	// bytes and inode/metadata immediately before replacement, not just mtime.
+	let current = read_snapshot(target, MAX_BYTES);
+	if (!same_stat(original.st, current.st) || original.data != current.data)
+		die('List changed externally; no entries saved, retry');
+	if (!fs.rename(state.temporary_path, target))
+		io_error('Cannot atomically replace user list');
+	state.temporary_path = null;
+	return { added: length(additions), duplicates, pending: true, message: APPLY_MESSAGE };
+}
+
+function add(args) {
+	let state = {};
+	let result;
+	try {
+		result = add_locked(args || {}, state);
+	}
+	catch (e) {
+		result = { added: 0, duplicates: 0, pending: false, message: 'No entries saved.', error: e.message || '' + e };
+	}
+	if (state.temporary)
+		state.temporary.close();
+	if (state.temporary_path && !fs.unlink(state.temporary_path))
+		result.error = (result.error ? result.error + '; ' : '') + 'Cannot remove replacement file: ' + (fs.error() || 'I/O error');
+	// Never unlink the persistent lock: unlinking a locked inode lets another
+	// writer acquire a different inode and defeats mutual exclusion.
+	if (state.lock)
+		state.lock.close();
+	if (state.directory)
+		state.directory.close();
+	return result;
+}
+
+return {
+	'dns-monitor.ruantiblock': {
+		lists: {
+			args: {},
+			call: function() {
+				try {
+					return { available: true, lists: environment().lists };
+				}
+				catch (e) {
+					return { available: false, lists: [], error: e.message || '' + e };
+				}
+			}
+		},
+		add: {
+			args: { list: 'list1', domains: [] },
+			call: function(request) { return add(request.args); }
+		}
+	}
+};
